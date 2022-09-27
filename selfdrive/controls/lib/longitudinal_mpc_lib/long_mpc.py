@@ -24,14 +24,13 @@ SOURCES = ['lead0', 'lead1', 'cruise', 'e2e']
 
 X_DIM = 3
 U_DIM = 1
-PARAM_DIM = 6
-COST_E_DIM = 5
+PARAM_DIM = 5
+COST_E_DIM = 4
 COST_DIM = COST_E_DIM + 1
 CONSTR_DIM = 4
 
-X_EGO_OBSTACLE_COST = 3.
 X_EGO_COST = 0.
-V_EGO_COST = 0.
+V_EGO_COST = 2.
 A_EGO_COST = 0.
 J_EGO_COST = 5.0
 A_CHANGE_COST = 200.
@@ -92,8 +91,8 @@ def gen_long_model():
   x_obstacle = SX.sym('x_obstacle')
   prev_a = SX.sym('prev_a')
   lead_t_follow = SX.sym('lead_t_follow')
-  lead_danger_factor = SX.sym('lead_danger_factor')
-  model.p = vertcat(a_min, a_max, x_obstacle, prev_a, lead_t_follow, lead_danger_factor)
+           
+  model.p = vertcat(a_min, a_max, x_obstacle, prev_a, lead_t_follow)
 
   # dynamics model
   f_expl = vertcat(v_ego, a_ego, j_ego)
@@ -128,7 +127,6 @@ def gen_long_ocp():
   x_obstacle = ocp.model.p[2]
   prev_a = ocp.model.p[3]
   lead_t_follow = ocp.model.p[4]
-  lead_danger_factor = ocp.model.p[5]
 
   ocp.cost.yref = np.zeros((COST_DIM, ))
   ocp.cost.yref_e = np.zeros((COST_E_DIM, ))
@@ -139,8 +137,7 @@ def gen_long_ocp():
   # from an obstacle at every timestep. This obstacle can be a lead car
   # or other object. In e2e mode we can use x_position targets as a cost
   # instead.
-  costs = [((x_obstacle - x_ego) - (desired_dist_comfort)) / (v_ego + 10.),
-           x_ego,
+  costs = [x_ego,
            v_ego,
            a_ego,
            a_ego - prev_a,
@@ -154,12 +151,12 @@ def gen_long_ocp():
   constraints = vertcat(v_ego,
                         (a_ego - a_min),
                         (a_max - a_ego),
-                        ((x_obstacle - x_ego) - lead_danger_factor * (desired_dist_comfort)) / (v_ego + 10.))
+                        ((x_obstacle - x_ego) - (desired_dist_comfort)) / (v_ego + 10.))
   ocp.model.con_h_expr = constraints
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, T_FOLLOW, LEAD_DANGER_FACTOR])
+  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, T_FOLLOW])
 
   # We put all constraint cost weights to 0 and only set them at runtime
   cost_weights = np.zeros(CONSTR_DIM)
@@ -236,7 +233,7 @@ class LongitudinalMpc:
     for i in range(N):
       # TODO don't hardcode A_CHANGE_COST idx
       # reduce the cost on (a-a_prev) later in the horizon.
-      W[4,4] = cost_weights[4] * np.interp(T_IDXS[i], [0.0, 1.0, 2.0], [1.0, 1.0, 0.0])
+      W[3,3] = cost_weights[3] * np.interp(T_IDXS[i], [0.0, 1.0, 2.0], [1.0, 1.0, 0.0])
       self.solver.cost_set(i, 'W', W)
     # Setting the slice without the copy make the array not contiguous,
     # causing issues with the C interface.
@@ -250,13 +247,13 @@ class LongitudinalMpc:
   def set_weights(self, prev_accel_constraint=True):
     if self.mode == 'acc':
       a_change_cost = A_CHANGE_COST if prev_accel_constraint else 0
-      cost_weights = [X_EGO_OBSTACLE_COST, X_EGO_COST, V_EGO_COST, A_EGO_COST, a_change_cost, J_EGO_COST]
+      cost_weights = [X_EGO_COST, V_EGO_COST, A_EGO_COST, a_change_cost, J_EGO_COST]
       constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, DANGER_ZONE_COST]
     elif self.mode == 'blended':
-      cost_weights = [0., 0.2, 0.25, 1.0, 0.0, 1.0]
+      cost_weights = [0.2, 0.25, 1.0, 0.0, 1.0]
       constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, 50.0]
     elif self.mode == 'e2e':
-      cost_weights = [0., 0.2, 0.25, 1., 0.0, .1]
+      cost_weights = [0.2, 0.25, 1., 0.0, .1]
       constraint_cost_weights = [LIMIT_COST, LIMIT_COST, LIMIT_COST, 0.0]
     else:
       raise NotImplementedError(f'Planner mode {self.mode} not recognized in planner cost set')
@@ -320,28 +317,25 @@ class LongitudinalMpc:
 
     # Update in ACC mode or ACC/e2e blend
     if self.mode == 'acc':
-      self.params[:,0] = MIN_ACCEL if self.status else self.cruise_min_a
+      self.params[:,0] = MIN_ACCEL
       self.params[:,1] = self.cruise_max_a
-      self.params[:,5] = LEAD_DANGER_FACTOR
 
       # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
       # when the leads are no factor.
-      v_lower = v_ego + (T_IDXS * self.cruise_min_a * 1.05)
+      v_lower = v_ego - (T_IDXS * 1.5)
       v_upper = v_ego + (T_IDXS * self.cruise_max_a * 1.05)
       v_cruise_clipped = np.clip(v_cruise * np.ones(N+1),
                                  v_lower,
                                  v_upper)
-      cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped)
-      x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
-      self.source = SOURCES[np.argmin(x_obstacles[0])]
+      v[:] = v_cruise_clipped
+      x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle])
 
       # These are not used in ACC mode
-      x[:], v[:], a[:], j[:] = 0.0, 0.0, 0.0, 0.0
+      x[:], a[:], j[:] = 0.0, 0.0, 0.0
 
     elif self.mode == 'blended':
       self.params[:,0] = MIN_ACCEL
       self.params[:,1] = MAX_ACCEL
-      self.params[:,5] = 1.0
 
       x_obstacles = np.column_stack([lead_0_obstacle,
                                      lead_1_obstacle])
@@ -357,10 +351,10 @@ class LongitudinalMpc:
     else:
       raise NotImplementedError(f'Planner mode {self.mode} not recognized in planner update')
 
-    self.yref[:,1] = x
-    self.yref[:,2] = v
-    self.yref[:,3] = a
-    self.yref[:,5] = j
+    self.yref[:,0] = x
+    self.yref[:,1] = v
+    self.yref[:,2] = a
+    self.yref[:,4] = j
     for i in range(N):
       self.solver.set(i, "yref", self.yref[i])
     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
@@ -399,9 +393,9 @@ class LongitudinalMpc:
     # So, we use integral(v) + x[0] to obtain the forward-distance
     xforward = ((v[1:] + v[:-1]) / 2) * (T_IDXS[1:] - T_IDXS[:-1])
     x = np.cumsum(np.insert(xforward, 0, x[0]))
-    self.yref[:,1] = x
-    self.yref[:,2] = v
-    self.yref[:,3] = a
+    self.yref[:,0] = x
+    self.yref[:,1] = v
+    self.yref[:,2] = a
     for i in range(N):
       self.solver.cost_set(i, "yref", self.yref[i])
     self.solver.cost_set(N, "yref", self.yref[N][:COST_E_DIM])
