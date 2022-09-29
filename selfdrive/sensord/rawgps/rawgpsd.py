@@ -13,7 +13,7 @@ from system.swaglog import cloudlog
 from laika.gps_time import GPSTime
 
 from selfdrive.sensord.rawgps.modemdiag import ModemDiag, DIAG_LOG_F, setup_logs, send_recv
-from selfdrive.sensord.rawgps.structs import dict_unpacker
+from selfdrive.sensord.rawgps.structs import dict_unpacker, relist
 from selfdrive.sensord.rawgps.structs import gps_measurement_report, gps_measurement_report_sv
 from selfdrive.sensord.rawgps.structs import glonass_measurement_report, glonass_measurement_report_sv
 from selfdrive.sensord.rawgps.structs import oemdre_measurement_report, oemdre_measurement_report_sv
@@ -228,12 +228,16 @@ def main() -> NoReturn:
     elif log_type == LOG_GNSS_OEMDRE_SVPOLY_REPORT:
       msg = messaging.new_message('qcomGnss')
       dat = unpack_svpoly(log_payload)
+      dat = relist(dat)
       gnss = msg.qcomGnss
       gnss.logTs = log_time
       gnss.init('drSvPoly')
       poly = gnss.drSvPoly
       for k,v in dat.items():
-        setattr(poly, k, v)
+        if k == "version":
+          assert v == 0
+        else:
+          setattr(poly, k, v)
       pm.send('qcomGnss', msg)
 
     elif log_type in [LOG_GNSS_GPS_MEASUREMENT_REPORT, LOG_GNSS_GLONASS_MEASUREMENT_REPORT]:
