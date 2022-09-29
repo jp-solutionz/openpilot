@@ -5,6 +5,10 @@ def create_buttons(packer, bus, idx, button):
     "ACCButtons": button,
     "RollingCounter": idx,
   }
+  dat = packer.make_can_msg("ASCMSteeringButton", bus, values)[2]
+
+  values["SteeringButtonChecksum"] = checksum
+
   return packer.make_can_msg("ASCMSteeringButton", bus, values)
 
 def create_steering_control(packer, bus, apply_steer, idx, lkas_active):
