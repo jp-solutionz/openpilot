@@ -224,9 +224,17 @@ def main() -> NoReturn:
       gps.speedAccuracy = math.sqrt(sum([x**2 for x in vNEDsigma]))
 
       pm.send('gpsLocation', msg)
+
     elif log_type == LOG_GNSS_OEMDRE_SVPOLY_REPORT:
-      report = unpack_svpoly(log_payload)
-      print(report)
+      msg = messaging.new_message('qcomGnss')
+      dat = unpack_svpoly(log_payload)
+      gnss = msg.qcomGnss
+      gnss.logTs = log_time
+      gnss.init('drSvPoly')
+      poly = gnss.poly
+      for k,v in dat.items():
+        setattr(poly, k, v)
+      pm.send('qcomGnss', msg)
 
     elif log_type in [LOG_GNSS_GPS_MEASUREMENT_REPORT, LOG_GNSS_GLONASS_MEASUREMENT_REPORT]:
       msg = messaging.new_message('qcomGnss')
