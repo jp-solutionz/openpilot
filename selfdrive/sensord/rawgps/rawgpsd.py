@@ -76,6 +76,9 @@ def main() -> NoReturn:
   unpack_oemdre_meas, size_oemdre_meas = dict_unpacker(oemdre_measurement_report, True)
   unpack_oemdre_meas_sv, size_oemdre_meas_sv = dict_unpacker(oemdre_measurement_report_sv, True)
 
+  unpack_svpoly, _ = dict_unpacker(oemdre_svpoly_report, True)
+  unpack_position, _ = dict_unpacker(position_report)
+
   log_types = [
     LOG_GNSS_GPS_MEASUREMENT_REPORT,
     LOG_GNSS_GLONASS_MEASUREMENT_REPORT,
@@ -83,8 +86,6 @@ def main() -> NoReturn:
     LOG_GNSS_OEMDRE_SVPOLY_REPORT,
   ]
   pub_types = ['qcomGnss']
-  unpack_position, _ = dict_unpacker(position_report)
-  unpack_svpoly, _ = dict_unpacker(oemdre_svpoly_report)
 
   log_types.append(LOG_GNSS_POSITION_REPORT)
   pub_types.append("gpsLocation")
@@ -235,7 +236,7 @@ def main() -> NoReturn:
       poly = gnss.drSvPoly
       for k,v in dat.items():
         if k == "version":
-          assert v == 0
+          assert v == 2
         else:
           setattr(poly, k, v)
       pm.send('qcomGnss', msg)
