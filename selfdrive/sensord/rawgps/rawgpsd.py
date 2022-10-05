@@ -111,6 +111,7 @@ def main() -> NoReturn:
     try_setup_logs(diag, [])
     cloudlog.warning("rawgpsd: logs disabled")
     sys.exit(0)
+
   signal.signal(signal.SIGINT, disable_logs)
   try_setup_logs(diag, log_types)
   cloudlog.warning("rawgpsd: setup logs done")
