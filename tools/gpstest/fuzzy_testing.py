@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import sys
 import time
 import random
 import datetime as dt
@@ -56,16 +57,16 @@ def get_random_coords(lat, lon) -> Tuple[int, int]:
 
 
 rc_p: Any = None
-def exec_remote_checker(lat, lon, duration):
+def exec_remote_checker(lat, lon, duration, ip_addr, gps_module):
   global rc_p
   # TODO: good enough for testing
   remote_cmd =  "export PYTHONPATH=/data/pythonpath:/data/pythonpath/pyextra && "
   remote_cmd += "cd /data/openpilot && "
   remote_cmd += f"timeout {duration} /usr/local/pyenv/shims/python tools/gpstest/remote_checker.py "
-  remote_cmd += f"{lat} {lon}"
+  remote_cmd += f"{gps_module} {lat} {lon}"
 
-  ssh_cmd = ['ssh', '-i', '/home/batman/openpilot/xx/phone/key/id_rsa',
-             'comma@192.168.60.130']
+  ssh_cmd = ["ssh", "-i", "/home/batman/openpilot/xx/phone/key/id_rsa",
+             f"comma@{ip_addr}"]
   ssh_cmd += [remote_cmd]
 
   rc_p = sp.Popen(ssh_cmd, stdout=sp.PIPE)
@@ -74,8 +75,9 @@ def exec_remote_checker(lat, lon, duration):
   print(f"Checker Result: {rc_output.strip().decode('utf-8')}")
 
 
-def run_remote_checker(spoof_proc, lat, lon, duration) -> bool:
-  checker_thread = threading.Thread(target=exec_remote_checker, args=(lat, lon, duration))
+def run_remote_checker(spoof_proc, lat, lon, duration, ip_addr, gps_module) -> bool:
+  checker_thread = threading.Thread(target=exec_remote_checker,
+                                    args=(lat, lon, duration, ip_addr, gps_module))
   checker_thread.start()
 
   tcnt = 0
@@ -97,9 +99,21 @@ def run_remote_checker(spoof_proc, lat, lon, duration) -> bool:
 
 
 def main():
-  rinex_file = download_rinex()
+
+  if len(sys.argv) != 3:
+    print(f"usage: {sys.argv[0]} <u|q> <ip_addr>")
+
+  gps_module = sys.argv[1]
+  ip_addr = sys.argv[2]
+
+  if gps_module != 'u' and gps_module != 'q':
+    print(f"Invalid gps module: {gps_module}, allowed 'u' (ublox), 'q' (quectel)")
+    return
+
+  print(f"GPS module: {gps_module}")
 
   duration = 60*2 # max runtime in seconds
+  rinex_file = download_rinex()
   lat, lon = get_random_coords(47.2020, 15.7403)
 
   while True:
@@ -108,7 +122,7 @@ def main():
     start_time = time.monotonic()
 
     # remote checker runs blocking
-    if not run_remote_checker(spoof_proc, lat, lon, duration):
+    if not run_remote_checker(spoof_proc, lat, lon, duration, ip_addr, gps_module):
       # location could not be matched by ublox module
       pass
 
