@@ -88,7 +88,7 @@ class IsoTpParallelQuery:
     # Send first request to functional addrs, subsequent responses are handled on physical addrs
     if len(self.functional_addrs):
       for addr in self.functional_addrs:
-        self._create_isotp_msg(addr, None, -1).send(self.request[0])
+        self._create_isotp_msg(tx_addr=addr, sub_addr=None, rx_addr=-1).send(self.request[0])
 
     # If querying functional addrs, set up physical IsoTpMessages to send consecutive frames
     for msg in msgs.values():
@@ -105,7 +105,7 @@ class IsoTpParallelQuery:
 
       for tx_addr, msg in msgs.items():
         try:
-          dat, updated = msg.recv()
+          dat, updated = msg.recv(send_flow_control=0.01)
         except Exception:
           cloudlog.exception(f"Error processing UDS response: {tx_addr}")
           request_done[tx_addr] = True
