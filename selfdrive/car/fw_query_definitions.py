@@ -42,6 +42,10 @@ class StdQueries:
   OBD_VERSION_REQUEST = b'\x09\x04'
   OBD_VERSION_RESPONSE = b'\x49\x04'
 
+  # PIDs supported
+  OBD_PID_REQUEST = b'\x01\x00'
+  OBD_PID_RESPONSE = b'\x41\x00'
+
   # VIN queries
   OBD_VIN_REQUEST = b'\x09\x02'
   OBD_VIN_RESPONSE = b'\x49\x02\x01'

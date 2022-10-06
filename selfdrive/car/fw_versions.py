@@ -8,6 +8,7 @@ from cereal import car
 from selfdrive.car.ecu_addrs import get_ecu_addrs
 from selfdrive.car.interfaces import get_interface_attr
 from selfdrive.car.fingerprints import FW_VERSIONS
+from selfdrive.car.fw_query_definitions import StdQueries
 from selfdrive.car.isotp_parallel_query import IsoTpParallelQuery
 from system.swaglog import cloudlog
 
@@ -144,6 +145,16 @@ def match_fw_to_car(fw_versions, allow_exact=True, allow_fuzzy=True):
       return exact_match, matches
 
   return True, set()
+
+
+def send_functional_tester_present(logcan, sendcan, bus, req=StdQueries.OBD_PID_REQUEST, resp=StdQueries.OBD_PID_REQUEST, timeout=0.2):
+  addrs = list(range(0x7e0, 0x7e8)) + list(range(0x18DA00F1, 0x18DB00F1, 0x100))  # addrs to process/wait for
+  query = IsoTpParallelQuery(sendcan, logcan, bus, addrs, [req], [resp],
+                             functional_addrs=uds.FUNCTIONAL_ADDRS)
+  try:
+    print(query.get_data(timeout))
+  except Exception:
+    cloudlog.exception("Tester present functional address exception")
 
 
 def get_present_ecus(logcan, sendcan):
@@ -299,7 +310,9 @@ if __name__ == "__main__":
       extra[(Ecu.unknown, 0x750, i)] = []
     extra = {"any": {"debug": extra}}
 
-  time.sleep(1.)
+  time.sleep(0.2)
+  send_functional_tester_present(logcan, sendcan, 1, req=StdQueries.OBD_PID_REQUEST, resp=StdQueries.OBD_PID_REQUEST, timeout=0.2)
+  send_functional_tester_present(logcan, sendcan, 1, req=StdQueries.TESTER_PRESENT_REQUEST, resp=StdQueries.TESTER_PRESENT_RESPONSE, timeout=0.2)
 
   t = time.time()
   print("Getting vin...")
